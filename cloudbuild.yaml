@@ -31,7 +31,8 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--set-env-vars=APP_ENV=production'
-      - '--set-secrets=DATABASE_URL=metabocoach-db-url:latest,REDIS_URL=metabocoach-redis-url:latest,GEMINI_API_KEY=metabocoach-gemini-key:latest,TWILIO_ACCOUNT_SID=metabocoach-twilio-sid:latest,TWILIO_AUTH_TOKEN=metabocoach-twilio-token:latest,TELEGRAM_BOT_TOKEN=metabocoach-telegram-token:latest'
+      # Telegram is primary channel; Twilio secrets are optional (add when enabling WhatsApp)
+      - '--set-secrets=DATABASE_URL=metabocoach-db-url:latest,REDIS_URL=metabocoach-redis-url:latest,GEMINI_API_KEY=metabocoach-gemini-key:latest,TELEGRAM_BOT_TOKEN=metabocoach-telegram-token:latest'
       - '--memory=512Mi'
       - '--cpu=1'
       - '--min-instances=1'

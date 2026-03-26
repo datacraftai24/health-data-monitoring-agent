@@ -45,20 +45,20 @@ class MessageDispatcher:
         if not force and not await throttler.should_send(user_id, priority, glucose_value):
             return False
 
-        # Send via preferred channel
+        # Send via preferred channel (Telegram is primary, WhatsApp is future/secondary)
         success = False
-        if user.preferred_channel == "whatsapp" and user.phone:
+        if user.preferred_channel == "telegram" and user.telegram_chat_id:
+            success = await telegram_client.send_message(user.telegram_chat_id, message)
+        elif user.preferred_channel == "whatsapp" and user.phone:
             sid = await whatsapp_client.send_message(user.phone, message)
             success = sid is not None
-        elif user.preferred_channel == "telegram" and user.telegram_chat_id:
-            success = await telegram_client.send_message(user.telegram_chat_id, message)
         else:
-            # Fallback: try whatsapp first, then telegram
-            if user.phone:
+            # Fallback: try telegram first, then whatsapp
+            if user.telegram_chat_id:
+                success = await telegram_client.send_message(user.telegram_chat_id, message)
+            if not success and user.phone:
                 sid = await whatsapp_client.send_message(user.phone, message)
                 success = sid is not None
-            if not success and user.telegram_chat_id:
-                success = await telegram_client.send_message(user.telegram_chat_id, message)
 
         if success:
             await throttler.record_sent(user_id)

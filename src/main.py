@@ -19,6 +19,12 @@ async def lifespan(app: FastAPI):
     if settings.sentry_dsn:
         sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
     logger.info("MetaboCoach starting up (env=%s)", settings.app_env)
+
+    # Register Telegram bot commands on startup
+    if settings.telegram_bot_token:
+        from src.messaging.telegram_client import telegram_client
+        await telegram_client.set_bot_commands()
+
     yield
     # Shutdown
     logger.info("MetaboCoach shutting down")

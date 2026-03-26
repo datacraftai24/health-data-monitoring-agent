@@ -37,7 +37,7 @@ class User(Base):
     glucose_target_high: Mapped[float] = mapped_column(Float, default=9.0)
 
     # Preferences
-    preferred_channel: Mapped[str] = mapped_column(String(20), default="whatsapp")
+    preferred_channel: Mapped[str] = mapped_column(String(20), default="telegram")
     quiet_hours_start: Mapped[time | None] = mapped_column(Time)
     quiet_hours_end: Mapped[time | None] = mapped_column(Time)
     timezone: Mapped[str] = mapped_column(String(50), default="America/Toronto")

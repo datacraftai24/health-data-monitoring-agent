@@ -34,7 +34,7 @@ Food)   Detection)   Dispatcher)
 | Task Queue | Celery + Redis |
 | AI/LLM | Google Gemini (gemini-2.5-flash) |
 | Vision | Gemini Vision API |
-| Messaging | WhatsApp (Twilio) + Telegram Bot API |
+| Messaging | Telegram Bot API (primary) + WhatsApp via Twilio (future) |
 | Hosting | Google Cloud Platform (Cloud Run) |
 | IaC | Terraform |
 | CI/CD | Cloud Build |
@@ -42,7 +42,7 @@ Food)   Detection)   Dispatcher)
 ## Features
 
 - **Real-time glucose monitoring** — Polls FreeStyle Libre 2 via LibreLinkUp API every 5 minutes
-- **Food photo analysis** — Send a photo of your meal via WhatsApp/Telegram for instant nutritional breakdown
+- **Food photo analysis** — Send a photo of your meal via Telegram for instant nutritional breakdown
 - **Pre-emptive crash alerts** — Warns before glucose crashes happen based on trends and patterns
 - **Post-meal walk nudges** — Suggests walking when glucose is spiking after a meal
 - **Activity integration** — Garmin Connect push API for steps, workouts, sleep, and stress
@@ -85,8 +85,8 @@ metabocoach/
 - Docker & Docker Compose (for local development)
 - GCP account (for deployment)
 - LibreLinkUp account (FreeStyle Libre 2 sharing)
-- Twilio account (WhatsApp Business API)
-- Telegram bot token
+- Telegram bot token (primary channel)
+- Twilio account (optional, for future WhatsApp support)
 - Google Gemini API key
 
 ### Local Development
@@ -149,15 +149,15 @@ All configuration is via environment variables. See `.env.example` for the full 
 Key variables:
 - `GEMINI_API_KEY` — Google Gemini API key for food analysis and conversation
 - `LIBRE_EMAIL` / `LIBRE_PASSWORD` — LibreLinkUp credentials
-- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` — WhatsApp messaging
-- `TELEGRAM_BOT_TOKEN` — Telegram bot
+- `TELEGRAM_BOT_TOKEN` — Telegram bot (primary channel)
+- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` — WhatsApp messaging (optional, future)
 - `DATABASE_URL` — PostgreSQL + TimescaleDB connection string
 - `REDIS_URL` — Redis for caching and task queue
 
 ## How It Works
 
 1. **Glucose Monitoring**: Celery polls LibreLinkUp every 5 min, stores readings in TimescaleDB
-2. **Food Logging**: User sends photo/text via WhatsApp → Gemini Vision analyzes → stores meal with macros
+2. **Food Logging**: User sends photo/text via Telegram → Gemini Vision analyzes → stores meal with macros
 3. **Pattern Detection**: Nightly job correlates glucose ↔ food ↔ activity data to build personal metabolic profile
 4. **Alert Engine**: Every glucose reading triggers rule evaluation → pre-emptive alerts sent via messaging
 5. **Reports**: Daily summary at 9 PM, weekly report on Sundays — both with AI-generated insights
@@ -170,6 +170,6 @@ Key variables:
 | Cloud SQL (PostgreSQL) | $15-30 |
 | Memorystore (Redis) | $15 |
 | Gemini API | $20-40 |
-| Twilio WhatsApp | $15-20 |
+| Telegram Bot | Free |
 | Cloud Storage | $5 |
-| **Total** | **~$85-140/month** |
+| **Total** | **~$70-120/month** |
