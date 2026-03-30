@@ -38,7 +38,6 @@ async def _analyze_all():
 
 async def _analyze_user_patterns(db: AsyncSession, user: User):
     """Recalculate metabolic profile for a user."""
-    # Get all glucose readings from last 14 days
     since = datetime.utcnow() - timedelta(days=14)
 
     readings_result = await db.execute(
@@ -83,7 +82,61 @@ async def _analyze_user_patterns(db: AsyncSession, user: User):
             current = existing.crash_risk_by_hour.get(hour, 0)
             existing.crash_risk_by_hour[hour] = min(1.0, current + 0.1)
 
-    # Load food responses from DB
+    # Backfill meal peaks for meals that missed real-time follow-up
+    meals_result = await db.execute(
+        select(Meal).where(
+            Meal.user_id == user.id,
+            Meal.timestamp >= since,
+            Meal.actual_peak.is_(None),
+        )
+    )
+    meals_to_backfill = meals_result.scalars().all()
+    peak_values = []
+
+    for meal in meals_to_backfill:
+        window_start = meal.timestamp + timedelta(minutes=15)
+        window_end = meal.timestamp + timedelta(minutes=90)
+        post_meal = [
+            r for r in readings
+            if window_start <= r.timestamp <= window_end
+        ]
+        if post_meal:
+            peak_reading = max(post_meal, key=lambda r: r.glucose_mmol)
+            meal.actual_peak = peak_reading.glucose_mmol
+            meal.actual_peak_time = peak_reading.timestamp
+            peak_values.append(peak_reading.glucose_mmol)
+
+    # Update avg_post_meal_peak from all meals with actual data
+    all_meals_result = await db.execute(
+        select(Meal.actual_peak).where(
+            Meal.user_id == user.id,
+            Meal.actual_peak.isnot(None),
+            Meal.timestamp >= since,
+        )
+    )
+    all_peaks = [row[0] for row in all_meals_result.all()]
+    if all_peaks:
+        existing.avg_post_meal_peak = sum(all_peaks) / len(all_peaks)
+
+    # Update meal timing patterns
+    timing_meals_result = await db.execute(
+        select(Meal).where(
+            Meal.user_id == user.id,
+            Meal.timestamp >= since,
+            Meal.meal_type.isnot(None),
+        )
+    )
+    timing_meals = timing_meals_result.scalars().all()
+    for meal in timing_meals:
+        if meal.meal_type and meal.actual_peak:
+            existing.update_meal_timing(
+                meal_type=meal.meal_type,
+                hour=meal.timestamp.hour,
+                carbs_g=meal.total_carbs_g or 0,
+                peak_glucose=meal.actual_peak,
+            )
+
+    # Load food responses from DB and sync to profile
     food_result = await db.execute(
         select(FoodResponse).where(FoodResponse.user_id == user.id)
     )
@@ -102,6 +155,6 @@ async def _analyze_user_patterns(db: AsyncSession, user: User):
     await db.commit()
 
     logger.info(
-        "Updated metabolic profile for user %s (phase=%s, days=%d)",
-        user.id, existing.phase, existing.days_of_data,
+        "Updated metabolic profile for user %s (phase=%s, days=%d, backfilled=%d meals)",
+        user.id, existing.phase, existing.days_of_data, len(meals_to_backfill),
     )

@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaboCoach — Setup Wizard</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface-hover: #222632;
+            --border: #2a2e3a;
+            --text: #e4e4e7;
+            --text-muted: #8b8d97;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --green: #22c55e;
+            --green-bg: rgba(34, 197, 94, 0.1);
+            --red: #ef4444;
+            --red-bg: rgba(239, 68, 68, 0.1);
+            --yellow: #eab308;
+            --yellow-bg: rgba(234, 179, 8, 0.1);
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #6366f1, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+
+        .status-pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-pill.connected .dot { background: var(--green); }
+        .status-pill.disconnected .dot { background: var(--text-muted); }
+        .status-pill.error .dot { background: var(--red); }
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .card:hover { border-color: #3a3e4a; }
+        .card.connected { border-color: rgba(34, 197, 94, 0.3); }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .card-header:hover { background: var(--surface-hover); }
+
+        .card-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .card-title { font-weight: 600; font-size: 0.95rem; }
+        .card-subtitle { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
+
+        .card-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-connected { background: var(--green-bg); color: var(--green); }
+        .badge-required { background: var(--yellow-bg); color: var(--yellow); }
+        .badge-optional { background: rgba(139, 141, 151, 0.1); color: var(--text-muted); }
+        .badge-error { background: var(--red-bg); color: var(--red); }
+
+        .card-body {
+            display: none;
+            padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .card-body.open { display: block; padding-top: 1.25rem; }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus { border-color: var(--accent); }
+        input::placeholder { color: #4a4d57; }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .btn-test {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .btn-test:hover { background: var(--surface-hover); border-color: var(--accent); }
+
+        .btn-save {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-save:hover { background: var(--accent-hover); }
+
+        .btn-save:disabled, .btn-test:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Result message */
+        .result {
+            margin-top: 0.75rem;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: none;
+        }
+
+        .result.success { display: block; background: var(--green-bg); color: var(--green); }
+        .result.error { display: block; background: var(--red-bg); color: var(--red); }
+        .result.loading { display: block; background: rgba(99, 102, 241, 0.1); color: var(--accent); }
+
+        /* Help link */
+        .help-link {
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .help-link:hover { color: var(--accent-hover); }
+
+        /* Infra section */
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Chevron */
+        .chevron {
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+        }
+        .chevron.open { transform: rotate(90deg); }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>MetaboCoach Setup</h1>
+            <p>Connect your services to get started with health monitoring</p>
+        </header>
+
+        <div class="status-bar" id="statusBar"></div>
+
+        <!-- Infrastructure -->
+        <div class="section-title">Infrastructure</div>
+
+        <!-- PostgreSQL -->
+        <div class="card" id="card-database">
+            <div class="card-header" onclick="toggleCard('database')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">&#128451;</div>
+                    <div>
+                        <div class="card-title">PostgreSQL + TimescaleDB</div>
+                        <div class="card-subtitle">Time-series database for glucose readings</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-required" id="badge-database">Required</span>
+                    <span class="chevron" id="chevron-database">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-database">
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                    Runs via Docker Compose. Start with: <code style="background: var(--bg); padding: 2px 8px; border-radius: 4px;">docker-compose up -d db</code>
+                </p>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testConnection('database')">Test Connection</button>
+                </div>
+                <div class="result" id="result-database"></div>
+            </div>
+        </div>
+
+        <!-- Redis -->
+        <div class="card" id="card-redis">
+            <div class="card-header" onclick="toggleCard('redis')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">&#9889;</div>
+                    <div>
+                        <div class="card-title">Redis</div>
+                        <div class="card-subtitle">Celery broker + rate limiting</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-required" id="badge-redis">Required</span>
+                    <span class="chevron" id="chevron-redis">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-redis">
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+                    Runs via Docker Compose. Start with: <code style="background: var(--bg); padding: 2px 8px; border-radius: 4px;">docker-compose up -d redis</code>
+                </p>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testConnection('redis')">Test Connection</button>
+                </div>
+                <div class="result" id="result-redis"></div>
+            </div>
+        </div>
+
+        <!-- AI -->
+        <div class="section-title">AI / Intelligence</div>
+
+        <!-- Gemini -->
+        <div class="card" id="card-gemini">
+            <div class="card-header" onclick="toggleCard('gemini')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">&#10024;</div>
+                    <div>
+                        <div class="card-title">Google Gemini AI</div>
+                        <div class="card-subtitle">Food analysis, insights, conversation</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-required" id="badge-gemini">Required</span>
+                    <span class="chevron" id="chevron-gemini">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-gemini">
+                <a class="help-link" href="https://aistudio.google.com/apikey" target="_blank">&#8594; Get API key from Google AI Studio</a>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="password" id="gemini-api_key" placeholder="AIza...">
+                </div>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testService('gemini')">Test Connection</button>
+                    <button class="btn-save" onclick="saveService('gemini')">Save</button>
+                </div>
+                <div class="result" id="result-gemini"></div>
+            </div>
+        </div>
+
+        <!-- Data Sources -->
+        <div class="section-title">Data Sources</div>
+
+        <!-- LibreLinkUp -->
+        <div class="card" id="card-libre">
+            <div class="card-header" onclick="toggleCard('libre')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">&#128200;</div>
+                    <div>
+                        <div class="card-title">LibreLinkUp (FreeStyle Libre 2)</div>
+                        <div class="card-subtitle">Continuous glucose monitoring</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-required" id="badge-libre">Required</span>
+                    <span class="chevron" id="chevron-libre">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-libre">
+                <a class="help-link" href="https://www.libreview.com/" target="_blank">&#8594; LibreView account setup</a>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="libre-email" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="libre-password" placeholder="LibreView password">
+                </div>
+                <div class="form-group">
+                    <label>Region</label>
+                    <select id="libre-region">
+                        <option value="us">United States (us)</option>
+                        <option value="eu">Europe (eu)</option>
+                        <option value="au">Australia (au)</option>
+                        <option value="de">Germany (de)</option>
+                        <option value="fr">France (fr)</option>
+                    </select>
+                </div>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testService('libre')">Test Connection</button>
+                    <button class="btn-save" onclick="saveService('libre')">Save</button>
+                </div>
+                <div class="result" id="result-libre"></div>
+            </div>
+        </div>
+
+        <!-- Garmin -->
+        <div class="card" id="card-garmin">
+            <div class="card-header" onclick="toggleCard('garmin')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(234, 179, 8, 0.15); color: #eab308;">&#9201;</div>
+                    <div>
+                        <div class="card-title">Garmin Connect</div>
+                        <div class="card-subtitle">Steps, heart rate, sleep, workouts</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-optional" id="badge-garmin">Optional</span>
+                    <span class="chevron" id="chevron-garmin">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-garmin">
+                <a class="help-link" href="https://developer.garmin.com/" target="_blank">&#8594; Garmin Developer Portal</a>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Consumer Key</label>
+                        <input type="password" id="garmin-consumer_key" placeholder="OAuth consumer key">
+                    </div>
+                    <div class="form-group">
+                        <label>Consumer Secret</label>
+                        <input type="password" id="garmin-consumer_secret" placeholder="OAuth consumer secret">
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testService('garmin')">Test Connection</button>
+                    <button class="btn-save" onclick="saveService('garmin')">Save</button>
+                </div>
+                <div class="result" id="result-garmin"></div>
+            </div>
+        </div>
+
+        <!-- Messaging -->
+        <div class="section-title">Messaging Channels</div>
+
+        <!-- Telegram -->
+        <div class="card" id="card-telegram">
+            <div class="card-header" onclick="toggleCard('telegram')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">&#9993;</div>
+                    <div>
+                        <div class="card-title">Telegram Bot</div>
+                        <div class="card-subtitle">Primary channel — free, photo uploads, commands</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-required" id="badge-telegram">Required</span>
+                    <span class="chevron" id="chevron-telegram">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-telegram">
+                <a class="help-link" href="https://t.me/BotFather" target="_blank">&#8594; Create bot with @BotFather on Telegram</a>
+                <div class="form-group">
+                    <label>Bot Token</label>
+                    <input type="password" id="telegram-bot_token" placeholder="123456789:ABCdef...">
+                </div>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testService('telegram')">Test Connection</button>
+                    <button class="btn-save" onclick="saveService('telegram')">Save</button>
+                </div>
+                <div class="result" id="result-telegram"></div>
+            </div>
+        </div>
+
+        <!-- Twilio WhatsApp -->
+        <div class="card" id="card-twilio">
+            <div class="card-header" onclick="toggleCard('twilio')">
+                <div class="card-left">
+                    <div class="card-icon" style="background: rgba(34, 197, 94, 0.15); color: #22c55e;">&#128172;</div>
+                    <div>
+                        <div class="card-title">Twilio WhatsApp</div>
+                        <div class="card-subtitle">Alternative messaging channel</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="card-badge badge-optional" id="badge-twilio">Optional</span>
+                    <span class="chevron" id="chevron-twilio">&#9654;</span>
+                </div>
+            </div>
+            <div class="card-body" id="body-twilio">
+                <a class="help-link" href="https://console.twilio.com/" target="_blank">&#8594; Twilio Console</a>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Account SID</label>
+                        <input type="password" id="twilio-account_sid" placeholder="AC...">
+                    </div>
+                    <div class="form-group">
+                        <label>Auth Token</label>
+                        <input type="password" id="twilio-auth_token" placeholder="Auth token">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>WhatsApp From Number</label>
+                    <input type="text" id="twilio-whatsapp_from" placeholder="whatsapp:+14155238886" value="whatsapp:+14155238886">
+                </div>
+                <div class="btn-row">
+                    <button class="btn-test" onclick="testService('twilio')">Test Connection</button>
+                    <button class="btn-save" onclick="saveService('twilio')">Save</button>
+                </div>
+                <div class="result" id="result-twilio"></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>MetaboCoach v1.0 &mdash; <a href="/health">API Health</a> &middot; <a href="/docs">API Docs</a></p>
+        </footer>
+    </div>
+
+    <script>
+        const SERVICES = ['database', 'redis', 'gemini', 'libre', 'telegram', 'garmin', 'twilio'];
+
+        // Field mappings for each service
+        const FIELDS = {
+            gemini: ['api_key'],
+            libre: ['email', 'password', 'region'],
+            telegram: ['bot_token'],
+            garmin: ['consumer_key', 'consumer_secret'],
+            twilio: ['account_sid', 'auth_token', 'whatsapp_from'],
+        };
+
+        // Toggle card expand/collapse
+        function toggleCard(id) {
+            const body = document.getElementById(`body-${id}`);
+            const chevron = document.getElementById(`chevron-${id}`);
+            body.classList.toggle('open');
+            chevron.classList.toggle('open');
+        }
+
+        // Gather form data for a service
+        function getFormData(service) {
+            const data = {};
+            for (const field of FIELDS[service] || []) {
+                const el = document.getElementById(`${service}-${field}`);
+                if (el) data[field] = el.value.trim();
+            }
+            return data;
+        }
+
+        // Show result message
+        function showResult(service, type, message) {
+            const el = document.getElementById(`result-${service}`);
+            el.className = `result ${type}`;
+            if (type === 'loading') {
+                el.innerHTML = `<span class="spinner"></span>${message}`;
+            } else {
+                el.textContent = message;
+            }
+        }
+
+        // Update badge
+        function updateBadge(service, status) {
+            const badge = document.getElementById(`badge-${service}`);
+            const card = document.getElementById(`card-${service}`);
+            if (status === 'connected') {
+                badge.className = 'card-badge badge-connected';
+                badge.textContent = 'Connected';
+                card.classList.add('connected');
+            } else if (status === 'error') {
+                badge.className = 'card-badge badge-error';
+                badge.textContent = 'Error';
+                card.classList.remove('connected');
+            }
+        }
+
+        // Update status bar
+        function updateStatusBar(statusData) {
+            const bar = document.getElementById('statusBar');
+            bar.innerHTML = '';
+            const nameMap = {
+                database: 'PostgreSQL', redis: 'Redis', gemini: 'Gemini',
+                libre: 'Libre', telegram: 'Telegram', garmin: 'Garmin', twilio: 'WhatsApp'
+            };
+            for (const svc of SERVICES) {
+                const info = statusData[svc] || {};
+                const connected = info.configured;
+                const pill = document.createElement('div');
+                pill.className = `status-pill ${connected ? 'connected' : 'disconnected'}`;
+                pill.innerHTML = `<span class="dot"></span>${nameMap[svc]}`;
+                bar.appendChild(pill);
+            }
+        }
+
+        // Test infra connections (DB, Redis) — no form data needed
+        async function testConnection(service) {
+            showResult(service, 'loading', 'Testing connection...');
+            try {
+                const res = await fetch(`/setup/test/${service}`, { method: 'POST' });
+                const data = await res.json();
+                showResult(service, data.success ? 'success' : 'error', data.message);
+                if (data.success) updateBadge(service, 'connected');
+            } catch (e) {
+                showResult(service, 'error', `Network error: ${e.message}`);
+            }
+        }
+
+        // Test service with credentials
+        async function testService(service) {
+            const formData = getFormData(service);
+            showResult(service, 'loading', 'Testing connection...');
+            try {
+                const res = await fetch(`/setup/test/${service}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                });
+                const data = await res.json();
+                showResult(service, data.success ? 'success' : 'error', data.message);
+                if (data.success) {
+                    updateBadge(service, 'connected');
+                    refreshStatusBar();
+                } else {
+                    updateBadge(service, 'error');
+                }
+            } catch (e) {
+                showResult(service, 'error', `Network error: ${e.message}`);
+            }
+        }
+
+        // Save service credentials
+        async function saveService(service) {
+            const formData = getFormData(service);
+            showResult(service, 'loading', 'Saving credentials...');
+            try {
+                const res = await fetch(`/setup/save/${service}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                });
+                const data = await res.json();
+                showResult(service, data.success ? 'success' : 'error', data.message);
+                if (data.success) {
+                    updateBadge(service, 'connected');
+                    refreshStatusBar();
+                }
+            } catch (e) {
+                showResult(service, 'error', `Network error: ${e.message}`);
+            }
+        }
+
+        // Refresh status bar from server
+        async function refreshStatusBar() {
+            try {
+                const res = await fetch('/setup/status');
+                const data = await res.json();
+                updateStatusBar(data);
+            } catch (e) { /* ignore */ }
+        }
+
+        // Load initial status
+        async function loadStatus() {
+            try {
+                const res = await fetch('/setup/status');
+                const data = await res.json();
+                updateStatusBar(data);
+
+                // Update badges based on config status
+                for (const svc of SERVICES) {
+                    if (data[svc]?.configured) {
+                        updateBadge(svc, 'connected');
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load status:', e);
+            }
+        }
+
+        // Initialize
+        loadStatus();
+    </script>
+</body>
+</html>

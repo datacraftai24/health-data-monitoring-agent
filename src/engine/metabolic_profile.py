@@ -47,6 +47,12 @@ class MetabolicProfile:
     morning_sensitivity: float = 1.0  # Multiplier vs evening
     evening_sensitivity: float = 1.0
 
+    # Meal timing patterns: meal_type -> {avg_hour, avg_carbs, avg_spike, count}
+    meal_timing_patterns: dict[str, dict] = field(default_factory=dict)
+    # Best/worst performing meals for recommendations
+    best_performing_meals: list[dict] = field(default_factory=list)
+    worst_performing_meals: list[dict] = field(default_factory=list)
+
     last_updated: datetime | None = None
 
     def update_phase(self):
@@ -83,6 +89,21 @@ class MetabolicProfile:
         fr = self.food_responses.get(food_name)
         return fr.crash_probability if fr else 0.0
 
+    def update_meal_timing(
+        self, meal_type: str, hour: int, carbs_g: float, peak_glucose: float
+    ):
+        """Update meal timing patterns with a new data point."""
+        if meal_type not in self.meal_timing_patterns:
+            self.meal_timing_patterns[meal_type] = {
+                "avg_hour": hour, "avg_carbs": carbs_g, "avg_spike": peak_glucose, "count": 0,
+            }
+        p = self.meal_timing_patterns[meal_type]
+        n = p["count"]
+        p["avg_hour"] = (p["avg_hour"] * n + hour) / (n + 1)
+        p["avg_carbs"] = (p["avg_carbs"] * n + carbs_g) / (n + 1)
+        p["avg_spike"] = (p["avg_spike"] * n + peak_glucose) / (n + 1)
+        p["count"] = n + 1
+
     def get_predicted_peak(self, food_name: str) -> float | None:
         """Get predicted glucose peak for a food. Returns None if unknown."""
         fr = self.food_responses.get(food_name)
@@ -112,6 +133,9 @@ class MetabolicProfile:
             },
             "post_meal_walk_glucose_reduction": self.post_meal_walk_glucose_reduction,
             "crash_risk_by_hour": self.crash_risk_by_hour,
+            "meal_timing_patterns": self.meal_timing_patterns,
+            "best_performing_meals": self.best_performing_meals,
+            "worst_performing_meals": self.worst_performing_meals,
         }
 
     @classmethod
@@ -129,6 +153,9 @@ class MetabolicProfile:
             crash_frequency_per_day=data.get("crash_frequency_per_day", 0),
             post_meal_walk_glucose_reduction=data.get("post_meal_walk_glucose_reduction", 0),
             crash_risk_by_hour=data.get("crash_risk_by_hour", {}),
+            meal_timing_patterns=data.get("meal_timing_patterns", {}),
+            best_performing_meals=data.get("best_performing_meals", []),
+            worst_performing_meals=data.get("worst_performing_meals", []),
         )
         for k, v in data.get("food_responses", {}).items():
             profile.food_responses[k] = GlucoseResponse(

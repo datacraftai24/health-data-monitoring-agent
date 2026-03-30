@@ -9,11 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.recommender import recommender
 from src.engine.calorie_tracker import calorie_tracker
+from src.engine.metabolic_profile import MetabolicProfile
 from src.messaging.dispatcher import dispatcher
 from src.models.base import async_session
 from src.models.daily_summary import DailySummary
+from src.models.food_response import FoodResponse
 from src.models.glucose import GlucoseReading
 from src.models.activity import ActivityData
+from src.models.meal import Meal
 from src.models.user import User
 from src.tasks import celery_app
 
@@ -95,6 +98,48 @@ async def _generate_user_summary(db: AsyncSession, user: User):
     )
     activity = activity_result.scalar_one_or_none()
 
+    # Today's meals with glucose responses
+    meals_result = await db.execute(
+        select(Meal).where(
+            Meal.user_id == user.id,
+            Meal.timestamp >= start,
+            Meal.timestamp < end,
+        ).order_by(Meal.timestamp)
+    )
+    meals = meals_result.scalars().all()
+
+    meals_data = []
+    for meal in meals:
+        meal_info = {
+            "time": meal.timestamp.strftime("%I:%M %p"),
+            "description": meal.description,
+            "calories": meal.total_calories,
+            "carbs_g": meal.total_carbs_g,
+            "predicted_spike": meal.predicted_spike,
+            "actual_peak": meal.actual_peak,
+            "actual_peak_time_min": (
+                int((meal.actual_peak_time - meal.timestamp).total_seconds() / 60)
+                if meal.actual_peak_time else None
+            ),
+        }
+        meals_data.append(meal_info)
+
+    # Load metabolic profile and food responses
+    profile = MetabolicProfile.from_dict(user.metabolic_profile or {})
+
+    fr_result = await db.execute(
+        select(FoodResponse).where(FoodResponse.user_id == user.id).limit(10)
+    )
+    known_foods = {
+        fr.food_name: {
+            "avg_peak": fr.avg_peak_glucose,
+            "crash_prob": fr.crash_probability,
+            "samples": fr.sample_count,
+        }
+        for fr in fr_result.scalars().all()
+        if fr.food_name
+    }
+
     # Save summary
     summary = DailySummary(
         user_id=user.id,
@@ -115,34 +160,37 @@ async def _generate_user_summary(db: AsyncSession, user: User):
     db.add(summary)
     await db.commit()
 
-    # Generate insights with Gemini
+    # Generate insights with Gemini (now with meal-glucose context)
     daily_data = {
         "glucose_avg": glucose_avg,
-        "glucose_range": f"{glucose_min}-{glucose_max}",
+        "glucose_range": f"{glucose_min}-{glucose_max}" if glucose_min else "no data",
         "time_in_range": f"{time_in_range:.0f}%",
         "crashes": crash_count,
         "calories": nutrition.total_calories,
         "protein": nutrition.total_protein_g,
         "steps": activity.steps if activity else 0,
+        "meals_logged": meals_data,
+        "metabolic_phase": profile.phase,
+        "known_food_responses": known_foods,
     }
     insights = await recommender.get_daily_insights(daily_data)
 
     # Format and send report
     report = _format_daily_report(
         today, glucose_avg, glucose_min, glucose_max, time_in_range,
-        crash_count, nutrition, activity, insights, user,
+        crash_count, nutrition, activity, insights, user, meals,
     )
     await dispatcher.send(user=user, message=report, priority="low", force=True)
 
 
 def _format_daily_report(
     today, glucose_avg, glucose_min, glucose_max, time_in_range,
-    crash_count, nutrition, activity, insights, user,
+    crash_count, nutrition, activity, insights, user, meals,
 ) -> str:
     lines = [
-        f"📊 Daily Report — {today.strftime('%B %d, %Y')}",
+        f"<b>Daily Report — {today.strftime('%B %d, %Y')}</b>",
         "",
-        "🩸 Glucose",
+        "<b>Glucose</b>",
     ]
     if glucose_avg:
         lines.append(f"   Range: {glucose_min:.1f} — {glucose_max:.1f} mmol/L")
@@ -154,17 +202,38 @@ def _format_daily_report(
 
     lines.extend([
         "",
-        "🍽️ Nutrition",
+        "<b>Nutrition</b>",
         f"   Calories: {nutrition.total_calories} / {user.daily_calorie_target or '?'} target",
         f"   Protein: {nutrition.total_protein_g:.0f}g / {user.daily_protein_target_g or '?'}g target",
         f"   Carbs: {nutrition.total_carbs_g:.0f}g | Fat: {nutrition.total_fat_g:.0f}g",
+    ])
+
+    # Meal-by-meal glucose impact
+    if meals:
+        lines.extend(["", "<b>Meals & Glucose Impact</b>"])
+        for meal in meals:
+            desc = meal.description or "Unknown meal"
+            time_str = meal.timestamp.strftime("%I:%M %p")
+            if meal.actual_peak:
+                peak_min = (
+                    int((meal.actual_peak_time - meal.timestamp).total_seconds() / 60)
+                    if meal.actual_peak_time else "?"
+                )
+                lines.append(f"   {time_str} — {desc}")
+                lines.append(f"      Peak: {meal.actual_peak:.1f} mmol/L at {peak_min} min")
+                if meal.predicted_spike:
+                    lines.append(f"      (Predicted +{meal.predicted_spike:.1f})")
+            else:
+                lines.append(f"   {time_str} — {desc} (no glucose data)")
+
+    lines.extend([
         "",
-        "🚶 Activity",
+        "<b>Activity</b>",
         f"   Steps: {activity.steps if activity else 0:,}",
     ])
 
     if insights:
-        lines.extend(["", "📈 Insights"])
+        lines.extend(["", "<b>Recommendations</b>"])
         for insight in insights:
             lines.append(f"   • {insight}")
 

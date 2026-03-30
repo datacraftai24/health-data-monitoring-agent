@@ -8,6 +8,9 @@ from src.models.meal import Meal
 from src.models.alert import Alert, GlucoseEvent
 from src.models.food_response import FoodResponse
 from src.models.daily_summary import DailySummary
+from src.models.user_memory import UserMemory
+from src.models.focus import DailyFocus, FocusBlock, ParkedIdea, TodoItem, TuneRequest, FocusWeeklySummary
+from src.models.conversation import ConversationLog
 
 __all__ = [
     "Base",
@@ -20,4 +23,12 @@ __all__ = [
     "GlucoseEvent",
     "FoodResponse",
     "DailySummary",
+    "UserMemory",
+    "DailyFocus",
+    "FocusBlock",
+    "ParkedIdea",
+    "TodoItem",
+    "TuneRequest",
+    "FocusWeeklySummary",
+    "ConversationLog",
 ]

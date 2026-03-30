@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -42,14 +42,34 @@ async def _poll_all():
 
 async def _poll_user_glucose(db, user: User):
     """Poll and process glucose for a single user."""
-    reading_data = await libre_client.get_latest_for_user(user)
+    # Try user's stored token first, fall back to env var credentials
+    if user.libre_auth_token and user.libre_patient_id:
+        reading_data = await libre_client.get_latest_for_user(user)
+    elif user.libre_patient_id:
+        # Authenticate from env vars and fetch
+        await libre_client.authenticate()
+        reading_data = await libre_client.get_latest_reading(user.libre_patient_id)
+    else:
+        logger.warning("User %s has no libre_patient_id configured", user.id)
+        return
+
     if not reading_data:
         return
+
+    # Parse timestamp — LibreLinkUp uses "M/D/YYYY H:MM:SS AM/PM" format
+    ts_raw = reading_data["timestamp"]
+    try:
+        ts = datetime.fromisoformat(ts_raw)
+    except ValueError:
+        ts = datetime.strptime(ts_raw, "%m/%d/%Y %I:%M:%S %p")
+    # Ensure timezone-aware for PostgreSQL TIMESTAMP WITH TIME ZONE
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
 
     # Save reading
     reading = GlucoseReading(
         user_id=user.id,
-        timestamp=datetime.fromisoformat(reading_data["timestamp"]),
+        timestamp=ts,
         glucose_mmol=reading_data["glucose_mmol"],
         trend_arrow=reading_data.get("trend_arrow"),
         is_high=reading_data.get("is_high", False),
@@ -83,7 +103,7 @@ async def _poll_user_glucose(db, user: User):
     time_since_meal = None
     last_meal_carbs = None
     if last_meal:
-        time_since_meal = (datetime.utcnow() - last_meal.timestamp).total_seconds() / 3600
+        time_since_meal = (datetime.now(timezone.utc) - last_meal.timestamp).total_seconds() / 3600
         last_meal_carbs = last_meal.total_carbs_g
 
     # Build context and evaluate rules
@@ -97,11 +117,18 @@ async def _poll_user_glucose(db, user: User):
 
     alerts = alert_engine.evaluate(ctx)
 
-    # Send alerts
+    # Only send Telegram notifications for low glucose (< 4.5 mmol/L)
+    # All other alerts are logged but not dispatched
     for alert in alerts:
-        await dispatcher.send(
-            user=user,
-            message=alert.message,
-            priority=alert.priority,
-            glucose_value=alert.glucose_value,
-        )
+        if alert.glucose_value is not None and alert.glucose_value < 4.5:
+            await dispatcher.send(
+                user=user,
+                message=alert.message,
+                priority=alert.priority,
+                glucose_value=alert.glucose_value,
+            )
+        else:
+            logger.info(
+                "Alert suppressed (glucose %.1f): [%s] %s",
+                alert.glucose_value or 0, alert.rule_name, alert.message,
+            )

@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     gcp_region: str = "us-central1"
     gcs_bucket_name: str = "metabocoach-photos"
 
+    # Webhook (set to Cloud Run service URL for auto-registration)
+    webhook_base_url: str = ""
+
     # Sentry
     sentry_dsn: str = ""
 
@@ -58,9 +61,11 @@ class Settings(BaseSettings):
     @property
     def libre_api_base(self) -> str:
         endpoints = {
-            "us": "https://api.libreview.io",
+            "us": "https://api-us.libreview.io",
             "eu": "https://api-eu.libreview.io",
             "au": "https://api-au.libreview.io",
+            "de": "https://api-de.libreview.io",
+            "fr": "https://api-fr.libreview.io",
         }
         return endpoints.get(self.libre_region, endpoints["us"])
 
