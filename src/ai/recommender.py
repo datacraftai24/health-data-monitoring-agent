@@ -58,12 +58,39 @@ Give 1-2 specific, actionable tips. Keep it under 50 words."""
 
     async def get_daily_insights(self, daily_data: dict) -> list[str]:
         """Generate insights for the daily summary report."""
-        prompt = f"""Based on today's health data, generate 2-3 specific insights:
+        meals_section = ""
+        if daily_data.get("meals_logged"):
+            meals_lines = []
+            for m in daily_data["meals_logged"]:
+                line = f"- {m.get('time')}: {m.get('description')} ({m.get('calories', '?')} cal)"
+                if m.get("actual_peak"):
+                    line += f" → peaked at {m['actual_peak']:.1f} mmol/L"
+                    if m.get("predicted_spike"):
+                        line += f" (predicted +{m['predicted_spike']:.1f})"
+                meals_section = "\n".join(meals_lines)
 
-{daily_data}
+        known_foods = daily_data.get("known_food_responses", {})
+        phase = daily_data.get("metabolic_phase", "observation")
 
-Format as a numbered list. Each insight should be specific (reference actual foods, times, numbers)
-and actionable. Keep each under 30 words."""
+        prompt = f"""Based on today's health data, generate 2-3 specific, personalized insights:
+
+Overall: glucose avg {daily_data.get('glucose_avg')}, range {daily_data.get('glucose_range')}, \
+time in range {daily_data.get('time_in_range')}, crashes: {daily_data.get('crashes')}, \
+calories: {daily_data.get('calories')}, protein: {daily_data.get('protein')}g, \
+steps: {daily_data.get('steps')}
+
+Meals today:
+{meals_section or 'No meals logged'}
+
+Metabolic learning phase: {phase}
+Known food patterns: {known_foods or 'None yet'}
+
+Requirements:
+- Reference specific meals and their actual glucose impact
+- Compare predicted vs actual spikes where data exists
+- Suggest timing or portion adjustments based on patterns
+- Keep each insight under 40 words
+Format as a numbered list."""
 
         response = self.client.models.generate_content(
             model=settings.gemini_model,

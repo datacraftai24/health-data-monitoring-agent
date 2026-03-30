@@ -18,3 +18,4 @@ htmlcov/
 venv/
 *.log
 .DS_Store
+celerybeat-schedule.db

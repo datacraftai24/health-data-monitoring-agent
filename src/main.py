@@ -20,10 +20,13 @@ async def lifespan(app: FastAPI):
         sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
     logger.info("MetaboCoach starting up (env=%s)", settings.app_env)
 
-    # Register Telegram bot commands on startup
+    # Register Telegram bot commands and webhook on startup
     if settings.telegram_bot_token:
         from src.messaging.telegram_client import telegram_client
         await telegram_client.set_bot_commands()
+        if settings.webhook_base_url:
+            webhook_url = f"{settings.webhook_base_url}/webhook/telegram"
+            await telegram_client.set_webhook(webhook_url)
 
     yield
     # Shutdown
@@ -47,9 +50,11 @@ from src.api.routes.dashboard import router as dashboard_router  # noqa: E402
 from src.api.webhooks.whatsapp import router as whatsapp_router  # noqa: E402
 from src.api.webhooks.telegram import router as telegram_router  # noqa: E402
 from src.api.webhooks.garmin import router as garmin_router  # noqa: E402
+from src.api.routes.setup import router as setup_router  # noqa: E402
 
 app.include_router(health_router, tags=["health"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(setup_router, prefix="/setup", tags=["setup"])
 app.include_router(whatsapp_router, prefix="/webhook", tags=["webhooks"])
 app.include_router(telegram_router, prefix="/webhook", tags=["webhooks"])
 app.include_router(garmin_router, prefix="/webhook", tags=["webhooks"])

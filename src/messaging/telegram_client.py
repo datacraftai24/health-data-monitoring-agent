@@ -30,7 +30,21 @@ class TelegramClient:
         parse_mode: str = "HTML",
         reply_markup: dict | None = None,
     ) -> bool:
-        """Send a text message to a Telegram chat."""
+        """Send a text message to a Telegram chat. Auto-splits if > 4096 chars."""
+        # Telegram limit is 4096 chars per message
+        if len(text) > 4096:
+            chunks = self._split_message(text)
+            success = True
+            for i, chunk in enumerate(chunks):
+                markup = reply_markup if i == len(chunks) - 1 else None
+                ok = await self._send_single(chat_id, chunk, parse_mode, markup)
+                success = success and ok
+            return success
+        return await self._send_single(chat_id, text, parse_mode, reply_markup)
+
+    async def _send_single(
+        self, chat_id: int, text: str, parse_mode: str, reply_markup: dict | None
+    ) -> bool:
         try:
             async with httpx.AsyncClient() as client:
                 payload = {
@@ -44,6 +58,7 @@ class TelegramClient:
                 response = await client.post(
                     f"{self.base_url}/sendMessage",
                     json=payload,
+                    timeout=15,
                 )
                 response.raise_for_status()
                 logger.info("Telegram message sent to chat %s", chat_id)
@@ -51,6 +66,20 @@ class TelegramClient:
         except Exception:
             logger.exception("Failed to send Telegram message to chat %s", chat_id)
             return False
+
+    @staticmethod
+    def _split_message(text: str, limit: int = 4096) -> list[str]:
+        """Split long text into chunks at newline boundaries."""
+        chunks = []
+        while len(text) > limit:
+            split_at = text.rfind("\n", 0, limit)
+            if split_at == -1:
+                split_at = limit
+            chunks.append(text[:split_at])
+            text = text[split_at:].lstrip("\n")
+        if text:
+            chunks.append(text)
+        return chunks
 
     async def send_message_with_quick_replies(
         self,
@@ -129,6 +158,22 @@ class TelegramClient:
                 return True
         except Exception:
             logger.exception("Failed to answer callback query %s", callback_query_id)
+            return False
+
+    async def set_webhook(self, webhook_url: str) -> bool:
+        """Register the webhook URL with Telegram."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/setWebhook",
+                    json={"url": webhook_url},
+                    timeout=10,
+                )
+                response.raise_for_status()
+                logger.info("Telegram webhook set to %s", webhook_url)
+                return True
+        except Exception:
+            logger.exception("Failed to set Telegram webhook")
             return False
 
     async def set_bot_commands(self) -> bool:
