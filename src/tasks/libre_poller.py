@@ -113,6 +113,7 @@ async def _poll_user_glucose(db, user: User):
         rate_of_change=rate_of_change,
         time_since_last_meal_hours=time_since_meal,
         last_meal_carbs_g=last_meal_carbs,
+        current_hour=datetime.now(timezone.utc).hour,
     )
 
     alerts = alert_engine.evaluate(ctx)

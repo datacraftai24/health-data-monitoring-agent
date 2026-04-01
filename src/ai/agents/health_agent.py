@@ -1,4 +1,4 @@
-"""Health agent — handles glucose queries, trends, and health status."""
+"""Health agent — handles glucose queries with LIVE data, trends, and health status."""
 
 import logging
 from datetime import datetime, timedelta, timezone
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.engine.memory_manager import memory_manager
+from src.engine.user_context import user_context_manager
 from src.models.conversation import ConversationLog
 from src.models.glucose import GlucoseReading
 from src.models.meal import Meal
@@ -19,9 +20,13 @@ from src.utils.glucose_math import trend_arrow_to_label
 logger = logging.getLogger(__name__)
 
 HEALTH_SYSTEM_PROMPT = """You are MetaboCoach's health agent. You have REAL-TIME access to the user's
-FreeStyle Libre 2 CGM sensor. You ARE monitoring their glucose continuously every 5 minutes.
+FreeStyle Libre 2 CGM sensor. You ARE monitoring their glucose continuously.
 
-NEVER say you can't monitor or don't have access. You DO have the data.
+NEVER say you can't monitor or don't have access. You DO have the data — it's shown below.
+The reading below is LIVE — fetched right now, not cached.
+
+Who they are:
+{user_profile}
 
 Current health data:
 {health_data}
@@ -30,12 +35,13 @@ Learned patterns:
 {memories}
 
 Guidelines:
-- Lead with the actual numbers
+- Lead with the actual numbers — the glucose value shown above is current and accurate
 - Be concise (under 150 words)
 - If glucose is in range (3.9-9.0), acknowledge it positively
 - If trending up/down, suggest action
-- Reference food history if relevant
-- Connect glucose to how they might feel (energy, focus, fatigue)"""
+- Reference their known spike foods and crash triggers from the profile
+- Connect glucose to how they might feel (energy, focus, fatigue)
+- If the reading is stale (> 15 min old), mention it and say you'll get a fresh one next poll"""
 
 
 class HealthAgent:
@@ -49,11 +55,13 @@ class HealthAgent:
         return self._client
 
     async def handle(self, message: str, user: User, db: AsyncSession) -> str:
-        """Handle a health/glucose query."""
+        """Handle a health/glucose query with LIVE data fetch."""
         health_data = await self._get_health_data(db, user)
         memories = await memory_manager.get_context_text(db, str(user.id), "health")
+        user_profile = await user_context_manager.get_profile_text(db, user)
 
         system = HEALTH_SYSTEM_PROMPT.format(
+            user_profile=user_profile,
             health_data=health_data,
             memories=memories,
         )
@@ -89,22 +97,41 @@ class HealthAgent:
         return response.text
 
     async def _get_health_data(self, db: AsyncSession, user: User) -> str:
+        """Get health data — try LIVE fetch first, fall back to DB."""
         lines = []
 
-        # Latest glucose
-        result = await db.execute(
-            select(GlucoseReading)
-            .where(GlucoseReading.user_id == user.id)
-            .order_by(GlucoseReading.timestamp.desc())
-            .limit(1)
-        )
-        latest = result.scalar_one_or_none()
-        if latest:
-            lines.append(f"Current glucose: {latest.glucose_mmol:.1f} mmol/L")
-            lines.append(f"Trend: {trend_arrow_to_label(latest.trend_arrow)}")
-            lines.append(f"Reading time: {latest.timestamp.strftime('%I:%M %p')}")
+        # Always try live fetch when user explicitly asks about glucose
+        from src.ingestion.libre import libre_client
+        live_reading = None
+        try:
+            if user.libre_patient_id:
+                live_reading = await libre_client.get_latest_for_user(user)
+        except Exception:
+            logger.debug("Live glucose fetch failed for user %s", user.id)
+
+        if live_reading:
+            lines.append(f"LIVE glucose: {live_reading['glucose_mmol']:.1f} mmol/L")
+            trend = trend_arrow_to_label(live_reading.get("trend_arrow"))
+            lines.append(f"Trend: {trend or 'unknown'}")
+            lines.append(f"Reading time: {live_reading.get('timestamp', 'just now')}")
+            lines.append("(This is a LIVE reading, just fetched)")
         else:
-            lines.append("No glucose data available yet.")
+            # Fall back to latest DB reading
+            result = await db.execute(
+                select(GlucoseReading)
+                .where(GlucoseReading.user_id == user.id)
+                .order_by(GlucoseReading.timestamp.desc())
+                .limit(1)
+            )
+            latest = result.scalar_one_or_none()
+            if latest:
+                age_min = int((datetime.now(timezone.utc) - latest.timestamp).total_seconds() / 60)
+                stale_note = " (STALE — live fetch failed)" if age_min > 15 else ""
+                lines.append(f"Current glucose: {latest.glucose_mmol:.1f} mmol/L{stale_note}")
+                lines.append(f"Trend: {trend_arrow_to_label(latest.trend_arrow) or 'unknown'}")
+                lines.append(f"Reading time: {latest.timestamp.strftime('%I:%M %p')} ({age_min} min ago)")
+            else:
+                lines.append("No glucose data available yet.")
 
         # Today's stats
         now = datetime.now(timezone.utc)

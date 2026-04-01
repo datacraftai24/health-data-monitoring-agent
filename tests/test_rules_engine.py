@@ -131,3 +131,35 @@ class TestAlertEngine:
         ctx = HealthContext(current_glucose=None)
         alerts = self.engine.evaluate(ctx)
         assert len(alerts) == 0
+
+    def test_sleep_window_suppresses_meal_reminder(self):
+        """Should NOT send fasting alert at 3 AM even if 9 hours since last meal."""
+        ctx = HealthContext(
+            current_glucose=5.5,
+            glucose_trend="stable",
+            time_since_last_meal_hours=9.0,
+            current_hour=3,
+        )
+        alerts = self.engine.evaluate(ctx)
+        assert not any(a.rule_name == "pre_meal_reminder" for a in alerts)
+
+    def test_sleep_window_still_allows_crash_alert(self):
+        """Should still send crash alert at 3 AM if glucose is critically low."""
+        ctx = HealthContext(
+            current_glucose=3.5,
+            glucose_trend="falling",
+            current_hour=3,
+        )
+        alerts = self.engine.evaluate(ctx)
+        assert any(a.rule_name == "active_crash" for a in alerts)
+
+    def test_daytime_meal_reminder_works(self):
+        """Should send fasting alert during the day normally."""
+        ctx = HealthContext(
+            current_glucose=5.5,
+            glucose_trend="stable",
+            time_since_last_meal_hours=3.0,
+            current_hour=14,
+        )
+        alerts = self.engine.evaluate(ctx)
+        assert any(a.rule_name == "pre_meal_reminder" for a in alerts)

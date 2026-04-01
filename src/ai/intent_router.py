@@ -1,7 +1,12 @@
-"""Intent router — classifies every Telegram message using Gemini before routing to agents."""
+"""Intent router — classifies every Telegram message using Gemini before routing to agents.
+
+Also manages pending_input state for context-aware parsing (e.g., after morning activation
+asks for ONE thing, the next message should be treated as the ONE thing, not re-classified).
+"""
 
 import logging
 
+import redis.asyncio as aioredis
 from google import genai
 from google.genai import types
 
@@ -14,9 +19,11 @@ INTENT_PROMPT = """Classify this Telegram message into exactly ONE intent. Reply
 Intents:
 - food_log: user is describing food they ate/are eating, or asking to analyze food
 - glucose_check: user wants current glucose, glucose trend, or to monitor glucose
-- focus_command: user is using a focus system command (/morning, /onething, /focus, /stop, /park, /phone, /win, /1win, /todo, /todone, /todolist, /tonight, /tune, /ideas, /done, /status)
+- focus_command: user is using a focus/productivity command OR asking about their to-do list, tasks, what they need to do, schedule, morning routine, or daily planning
 - health_status: user wants overall health snapshot, calories, protein progress
 - general: everything else (questions, conversation, greetings)
+
+IMPORTANT: If the user asks "what's my todo list", "what do I need to do", "my tasks", "what's on my list" — that is focus_command, NOT general.
 
 Message: {message}
 Has photo: {has_photo}
@@ -27,12 +34,19 @@ Intent:"""
 class IntentRouter:
     def __init__(self):
         self._client: genai.Client | None = None
+        self._redis: aioredis.Redis | None = None
 
     @property
     def client(self) -> genai.Client:
         if self._client is None:
             self._client = genai.Client(api_key=settings.gemini_api_key)
         return self._client
+
+    @property
+    def redis(self) -> aioredis.Redis:
+        if self._redis is None:
+            self._redis = aioredis.from_url(settings.redis_url)
+        return self._redis
 
     async def classify(self, message: str, has_photo: bool = False) -> str:
         """Classify a message intent. Returns intent label string."""
@@ -64,6 +78,12 @@ class IntentRouter:
                     return intent
             return "general"
 
+        # Keyword shortcuts for common queries that Gemini might misroute
+        todo_keywords = ["todo", "to-do", "to do list", "task list", "my tasks",
+                         "what do i need", "what's on my list", "my list"]
+        if any(kw in cmd for kw in todo_keywords):
+            return "focus_command"
+
         # Use Gemini for natural language classification
         try:
             response = self.client.models.generate_content(
@@ -80,6 +100,27 @@ class IntentRouter:
         except Exception:
             logger.exception("Intent classification failed, defaulting to general")
             return "general"
+
+    # --- Pending input state management ---
+
+    async def set_pending_input(self, user_id: str, input_type: str, ttl: int = 300):
+        """Set what input we're expecting from the user next.
+
+        Args:
+            user_id: User ID.
+            input_type: What we're expecting, e.g., "awaiting_onething", "awaiting_win".
+            ttl: Time to live in seconds (default 5 min).
+        """
+        await self.redis.set(f"pending_input:{user_id}", input_type, ex=ttl)
+
+    async def get_pending_input(self, user_id: str) -> str | None:
+        """Check if we're expecting specific input from this user."""
+        result = await self.redis.get(f"pending_input:{user_id}")
+        return result.decode() if result else None
+
+    async def clear_pending_input(self, user_id: str):
+        """Clear the pending input expectation."""
+        await self.redis.delete(f"pending_input:{user_id}")
 
 
 intent_router = IntentRouter()

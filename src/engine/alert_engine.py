@@ -35,6 +35,7 @@ class HealthContext:
     is_bedtime: bool = False
     has_upcoming_activity: bool = False
     upcoming_activity_type: str | None = None
+    current_hour: int = 12  # 0-23, for sleep window detection
 
 
 class AlertEngine:
@@ -79,9 +80,14 @@ class AlertEngine:
                 )
             )
 
-        # Pre-meal reminder — too long since last meal
+        # Sleep window: suppress fasting/meal reminders between midnight-7AM
+        # unless glucose is actually dropping below 4.0 (handled by crash alerts above)
+        is_sleep_window = ctx.current_hour < 7 or ctx.current_hour >= 24
+
+        # Pre-meal reminder — too long since last meal (suppressed during sleep)
         if (
-            ctx.time_since_last_meal_hours is not None
+            not is_sleep_window
+            and ctx.time_since_last_meal_hours is not None
             and ctx.time_since_last_meal_hours > 2.5
             and ctx.current_glucose < 6.0
         ):
